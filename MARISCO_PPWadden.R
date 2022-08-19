@@ -19,8 +19,9 @@ library(reshape2)
 library(gdm)
 
 ###################################################################### Standing Diversity Model
+####################################################### SEM All stations
 
-ppwadden <- read.csv("MARISCO_pp_wadden_yearly_StandingDiv_Abu.csv")
+ppwadden <- read.csv("INTERREG_pp_wadden_annual.csv")
 
 ppwadden$StationID <- as.factor(ppwadden$StationID)
 
@@ -32,10 +33,6 @@ colSums(is.na(ppwadden))
 ppwadden <- na.exclude(ppwadden) 
 
 dim(ppwadden)
-
-levels(ppwadden$StationID)
-
-summary(ppwadden)
 
 # Outliers
 
@@ -58,10 +55,10 @@ hist(ppwadden$ENSy)
 dotchart(ppwadden$ENSy)
 
 
-boxplot(ppwadden$biomass, 
+boxplot(ppwadden$carbon, 
         main = "Carbon-based biomass")
-hist(ppwadden$biomass)
-dotchart(ppwadden$biomass)
+hist(ppwadden$carbon)
+dotchart(ppwadden$carbon)
 
 par(mfrow = c(1, 2))
 plot(x = ppwadden$year, 
@@ -72,16 +69,15 @@ plot(x = ppwadden$year,
      y = ppwadden$ENS)
 plot(x = ppwadden$year, 
      y = ppwadden$ENSy)
-par(mfrow = c(1, 3))
 plot(x = ppwadden$year, 
-     y = ppwadden$biomass)
+     y = ppwadden$carbon)
 par(mfrow = c(1, 1))
 
 # Collinearity X
 
 names(ppwadden)
-pairs.panels(ppwadden[, c("salinity", "temperature", "total.n", "total.p", "pH", 
-                          "S", "ENS", "Sy", "ENSy", "biomass")])
+pairs.panels(ppwadden[, c("salinity", "temperature", "total.n", "din", "dip", "total.p", "pH", "silicon", 
+                          "suspended.particulates", "S", "ENS", "carbon")])
 
 # Zero inflation
 sum(ppwadden == 0)
@@ -90,194 +86,66 @@ sum(ppwadden == 0)
 ppwadden$salinity <- scale(ppwadden$salinity)
 ppwadden$temperature <- scale(ppwadden$temperature)
 ppwadden$total.n <- scale(ppwadden$total.n)
-ppwadden$pH <- scale(ppwadden$pH)
 ppwadden$total.p <- scale(ppwadden$total.p)
+ppwadden$din <- scale(ppwadden$din)
+ppwadden$dip <- scale(ppwadden$dip)
+ppwadden$pH <- scale(ppwadden$pH)
+ppwadden$silicon <- scale(ppwadden$silicon)
+ppwadden$suspended.particulates <- scale(ppwadden$suspended.particulates)
 
 # Recode vars to roughly same scale
 #ppwadden$biomass <- ppwadden$mean.bm/10000
-ppwadden$biomass <- log(ppwadden$biomass)
+ppwadden$carbon <- log(ppwadden$carbon)
 ppwadden$S <- ppwadden$S/10
 ppwadden$Sy <- ppwadden$Sy/10
+ppwadden$ENS <- log(ppwadden$ENS)
+ppwadden$ENSy <- log(ppwadden$ENSy)
+
+################################### gls fitting
 
 
-
-# ################################# gls fitting
-
-
-gls.abu.S <- gls(S ~ temperature + salinity + total.p + total.n, data=ppwadden,
-             correlation=corGaus(form= ~ lat + long | year))
+gls.abu.S <- gls(S ~ temperature + salinity + total.p  + silicon, 
+                 data=ppwadden, correlation=corGaus(form= ~ lat + long | year))
 summary(gls.abu.S)
 plot(gls.abu.S)
 hist(resid(gls.abu.S,type="pearson"))
 
-gls.abu.ENS <- gls(ENS ~ temperature + salinity + total.p + total.n, data=ppwadden,
-               correlation=corGaus(form= ~ long + lat | year))
+gls.abu.ENS <- gls(ENS ~ temperature + salinity + total.n  + silicon, 
+                   data=ppwadden, correlation=corGaus(form= ~ long + lat | year))
 summary(gls.abu.ENS)
 plot(gls.abu.ENS)
 hist(resid(gls.abu.ENS,type="pearson"))
 
-gls.abu.biom <- gls(biomass ~ temperature + salinity + pH + total.n + total.p + ENS + S, data=ppwadden,
-                correlation=corGaus(form= ~ long + lat | year))
+gls.abu.biom <- gls(carbon ~ temperature + salinity + pH + total.p + total.n + silicon + ENS + S, data=ppwadden,
+                    correlation=corGaus(form= ~ long + lat | year))
 summary(gls.abu.biom)
 plot(gls.abu.biom)
 hist(resid(gls.abu.biom,type="pearson"))
 
-gls.abu.Sy <- gls(Sy ~ temperature + salinity + pH + total.n, data=ppwadden,
-                  correlation=corGaus(form= ~ lat + long | year))
-summary(gls.abu.Sy)
-plot(gls.abu.Sy)
-hist(resid(gls.abu.Sy,type="pearson"))
-
-gls.abu.ENSy <- gls(ENSy ~ temperature + salinity + pH + total.p, data=ppwadden,
-                    correlation=corGaus(form= ~ long + lat | year))
-summary(gls.abu.ENSy)
-plot(gls.abu.ENSy)
-hist(resid(gls.abu.ENSy,type="pearson"))
-
-gls.abu.biomy <- gls(biomass ~ temperature + salinity + pH + total.n + total.p + ENSy + Sy, data=ppwadden,
-                 correlation=corGaus(form= ~ long + lat | year))
-summary(gls.abu.biomy)
-plot(gls.abu.biomy)
-hist(resid(gls.abu.biomy,type="pearson"))
 
 
 ################################# piecewiseSEM fitting
 
+sem.gls.carbon <- psem(
+  gls.abu.S,
+  gls.abu.ENS,
+  gls.abu.biom,
+  S %~~% ENS,
+  total.n %~~% total.p,
+  total.n %~~% salinity,
+  total.p %~~% salinity,
+  pH %~~% carbon,
+  silicon %~~% total.p,
+  silicon %~~% total.n,
+  silicon %~~% salinity,
+  ppwadden)
+summary(sem.gls.carbon)
+plot(sem.gls.carbon)
 
-sem.SD.abu.gls1 <- psem(
-                gls.abu.S,
-                gls.abu.ENS,
-                gls.abu.biom,
-                S %~~% ENS,
-                total.n %~~% total.p,
-                total.n %~~% salinity,
-                total.p %~~% salinity,
-                pH %~~% biomass,
-                ppwadden)
-summary(sem.SD.abu.gls1)
-
-sem.SD.abu.gls2 <- psem(
-                        gls.abu.Sy,
-                        gls.abu.ENSy,
-                        gls.abu.biomy,
-                        Sy %~~% ENSy,
-                        total.n %~~% total.p,
-                        total.n %~~% salinity,
-                        total.p %~~% salinity,
-                        pH %~~% biomass,
-                        ppwadden)
-summary(sem.SD.abu.gls2)
-summary(sem.SD.abu.gls1)
-plot(sem.SD.abu.gls1)
-plot(sem.SD.abu.gls2)
 
 ################################################## GDM Model
 
 source("turnover.R")
-
-#####################################
-
-data <- read.csv("ZUIDOLWOT_wide.csv")
-
-colSums(is.na(data))
-
-data <- na.exclude(data) 
-
-dim(data)
-
-#number of rows and columns
-M = nrow(data)
-N = ncol(data)
-
-#Define columns with species abundance data
-SpecColumns = 9:N;
-
-
-#richness based turnover index  
-SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
-SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-#abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
-SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
-pred <- names(data[,env])
-d <- data
-
-dcomm <- SERa2
-
-# Dissimilarity matrix
-dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
-
-dim(d)
-dim(dcomm)
-
-
-### Model ----------------------------------------------------------------------------------
-
-# Data gdm format
-print("formatting gdm data... ")
-print(Sys.time())
-gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
-                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
-                           siteColumn="year", XColumn="long", YColumn="lat", 
-                           predData = d[,c("year","long","lat", pred)])
-
-gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
-
-summary(gdm.1)
-
-plot(gdm.1, plot.layout=c(2,3))
-
-######### SERr
-
-dcomm <- SERr2
-
-# Dissimilarity matrix
-dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
-
-dim(d)
-dim(dcomm)
-
-
-### Model ----------------------------------------------------------------------------------
-
-# Data gdm format
-print("formatting gdm data... ")
-print(Sys.time())
-gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
-                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
-                           siteColumn="year", XColumn="long", YColumn="lat", 
-                           predData = d[,c("year","long","lat", pred)])
-
-gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
-
-summary(gdm.1)
-
-plot(gdm.1, plot.layout=c(2,3))
-
 
 #####################################
 
@@ -294,7 +162,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -307,12 +175,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -321,12 +202,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -396,7 +290,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -409,12 +303,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -423,12 +330,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -457,7 +377,6 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-
 ######### SERr
 
 dcomm <- SERr2
@@ -485,109 +404,7 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-#####################################
-
-data <- read.csv("TERSLG4_wide.csv")
-
-colSums(is.na(data))
-
-data <- na.exclude(data) 
-
-dim(data)
-
-#number of rows and columns
-M = nrow(data)
-N = ncol(data)
-
-#Define columns with species abundance data
-SpecColumns = 9:N;
-
-
-#richness based turnover index  
-SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7)
-SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-#abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7)
-SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
-pred <- names(data[,env])
-d <- data
-
-dcomm <- SERa2
-
-# Dissimilarity matrix
-dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
-
-dim(d)
-dim(dcomm)
-
-
-### Model ----------------------------------------------------------------------------------
-
-# Data gdm format
-print("formatting gdm data... ")
-print(Sys.time())
-gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
-                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
-                           siteColumn="year", XColumn="long", YColumn="lat", 
-                           predData = d[,c("year","long","lat", pred)])
-
-gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
-
-summary(gdm.1)
-
-plot(gdm.1, plot.layout=c(2,3))
-
-
-######### SERr
-
-dcomm <- SERr2
-
-# Dissimilarity matrix
-dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
-
-dim(d)
-dim(dcomm)
-
-
-### Model ----------------------------------------------------------------------------------
-
-# Data gdm format
-print("formatting gdm data... ")
-print(Sys.time())
-gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
-                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
-                           siteColumn="year", XColumn="long", YColumn="lat", 
-                           predData = d[,c("year","long","lat", pred)])
-
-gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
-
-summary(gdm.1)
-
-plot(gdm.1, plot.layout=c(2,3))
-
-#####################################
+###############################################
 
 data <- read.csv("GROOTGND_wide.csv")
 
@@ -602,7 +419,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -615,12 +432,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -629,12 +459,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -663,7 +506,6 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-
 ######### SERr
 
 dcomm <- SERr2
@@ -690,6 +532,7 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
+
 
 #####################################
 
@@ -706,7 +549,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -719,12 +562,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -733,12 +589,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -767,8 +636,6 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-
-
 ######### SERr
 
 dcomm <- SERr2
@@ -795,6 +662,7 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
+
 
 #####################################
 
@@ -811,7 +679,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -824,12 +692,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -838,12 +719,25 @@ new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8)
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+new_row13 <- c(13, 13, 0)
+new_row14 <- c(14, 14, 0)
+new_row15 <- c(15, 15, 0)
+new_row16 <- c(16, 16, 0)
+new_row17 <- c(17, 17, 0)
+new_row18 <- c(18, 18, 0) 
+new_row19 <- c(19, 19, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, new_row19)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -872,6 +766,121 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
+######### SERr
+
+dcomm <- SERr2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
+
+
+#####################################
+
+data <- read.csv("BOOMKDP_wide.csv")
+
+colSums(is.na(data))
+
+data <- na.exclude(data) 
+
+dim(data)
+
+#number of rows and columns
+M = nrow(data)
+N = ncol(data)
+
+#Define columns with species abundance data
+SpecColumns = 10:N;
+
+
+#richness based turnover index  
+SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+#abundance based turnover index 
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+sp <- SpecColumns
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
+pred <- names(data[,env])
+d <- data
+
+dcomm <- SERa2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
 
 ######### SERr
 
@@ -899,6 +908,237 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
+
+#####################################
+
+data <- read.csv("DOOVBWT_wide.csv")
+
+colSums(is.na(data))
+
+data <- na.exclude(data) 
+
+dim(data)
+
+#number of rows and columns
+M = nrow(data)
+N = ncol(data)
+
+#Define columns with species abundance data
+SpecColumns = 10:N;
+
+
+#richness based turnover index  
+SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+#abundance based turnover index 
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+sp <- SpecColumns
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
+pred <- names(data[,env])
+d <- data
+
+dcomm <- SERa2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
+
+######### SERr
+
+dcomm <- SERr2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
+
+#####################################
+
+data <- read.csv("TERSLG10_wide.csv")
+
+colSums(is.na(data))
+
+data <- na.exclude(data) 
+
+dim(data)
+
+#number of rows and columns
+M = nrow(data)
+N = ncol(data)
+
+#Define columns with species abundance data
+SpecColumns = 10:N;
+
+
+#richness based turnover index  
+SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+#abundance based turnover index 
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
+new_row1 <- c(1, 1, 0)
+new_row2 <- c(2, 2, 0)
+new_row3 <- c(3, 3, 0)
+new_row4 <- c(4, 4, 0)
+new_row5 <- c(5, 5, 0)
+new_row6 <- c(6, 6, 0)
+new_row7 <- c(7, 7, 0)
+new_row8 <- c(8, 8, 0) 
+new_row9 <- c(9, 9, 0)
+new_row10 <- c(10, 10, 0)
+new_row11 <- c(11, 11, 0)
+new_row12 <- c(12, 12, 0)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10
+              , new_row11, new_row12)
+SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
+
+
+sp <- SpecColumns
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
+pred <- names(data[,env])
+d <- data
+
+dcomm <- SERa2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
+
+######### SERr
+
+dcomm <- SERr2
+
+# Dissimilarity matrix
+dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
+
+dim(d)
+dim(dcomm)
+
+
+### Model ----------------------------------------------------------------------------------
+
+# Data gdm format
+print("formatting gdm data... ")
+print(Sys.time())
+gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
+                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
+                           siteColumn="year", XColumn="long", YColumn="lat", 
+                           predData = d[,c("year","long","lat", pred)])
+
+gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
+
+summary(gdm.1)
+
+plot(gdm.1, plot.layout=c(2,3))
+
 
 #####################################
 
@@ -915,7 +1155,7 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -926,36 +1166,26 @@ new_row3 <- c(3, 3, 0)
 new_row4 <- c(4, 4, 0)
 new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0) 
-new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10, new_row11, new_row12)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
 new_row4 <- c(4, 4, 0)
 new_row5 <- c(5, 5, 0)
 new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0) 
-new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10, new_row11, new_row12)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -984,8 +1214,6 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-
-
 ######### SERr
 
 dcomm <- SERr2
@@ -1012,6 +1240,7 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
+
 
 #####################################
 
@@ -1023,19 +1252,12 @@ data <- na.exclude(data)
 
 dim(data)
 
-# Scale variables (method for GLMs)
-data$salinity <- scale(data$salinity)
-data$temperature <- scale(data$temperature)
-data$total.n <- scale(data$total.n)
-data$pH <- scale(data$pH)
-data$total.p <- scale(data$total.p)
-
 #number of rows and columns
 M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
 
 
 #richness based turnover index  
@@ -1050,12 +1272,13 @@ new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
 new_row10 <- c(10, 10, 0)
+
 SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -1066,12 +1289,13 @@ new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
 new_row10 <- c(10, 10, 0)
+
 SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -1100,7 +1324,6 @@ summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
 
-
 ######### SERr
 
 dcomm <- SERr2
@@ -1127,6 +1350,7 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
+
 
 #####################################
 
@@ -1143,7 +1367,8 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
+
 
 #richness based turnover index  
 SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
@@ -1156,15 +1381,16 @@ new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
+new_row10 <- c(10, 10, 0) 
 new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0) 
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10, new_row11, new_row12)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9,
+              new_row10, new_row11)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -1174,15 +1400,16 @@ new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
+new_row10 <- c(10, 10, 0) 
 new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0) 
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10, new_row11, new_row12)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9,
+              new_row10, new_row11)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -1210,8 +1437,6 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
-
-
 
 ######### SERr
 
@@ -1255,7 +1480,8 @@ M = nrow(data)
 N = ncol(data)
 
 #Define columns with species abundance data
-SpecColumns = 9:N;
+SpecColumns = 10:N;
+
 
 #richness based turnover index  
 SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
@@ -1268,13 +1494,13 @@ new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10)
+
+SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9)
 SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 #abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
+SERa = turnover(data[, SpecColumns], method = "SERa") #explicit
 new_row1 <- c(1, 1, 0)
 new_row2 <- c(2, 2, 0)
 new_row3 <- c(3, 3, 0)
@@ -1284,13 +1510,13 @@ new_row6 <- c(6, 6, 0)
 new_row7 <- c(7, 7, 0)
 new_row8 <- c(8, 8, 0) 
 new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, new_row10)
+
+SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9)
 SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
 
 
 sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
+env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n", "silicon"))
 pred <- names(data[,env])
 d <- data
 
@@ -1318,120 +1544,10 @@ gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
 summary(gdm.1)
 
 plot(gdm.1, plot.layout=c(2,3))
-
-
 
 ######### SERr
 
 dcomm <- SERr2
-
-# Dissimilarity matrix
-dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
-
-dim(d)
-dim(dcomm)
-
-
-### Model ----------------------------------------------------------------------------------
-
-# Data gdm format
-print("formatting gdm data... ")
-print(Sys.time())
-gdm_data <- formatsitepair(bioData = dcomm, bioFormat=3, 
-                           # bioData = d[,c(1,sp)], bioFormat=1, dist="bray", abundance=TRUE,
-                           siteColumn="year", XColumn="long", YColumn="lat", 
-                           predData = d[,c("year","long","lat", pred)])
-
-gdm.1 <- gdm(data = gdm_data, geo = FALSE, splines = NULL, knots = NULL)
-
-summary(gdm.1)
-
-plot(gdm.1, plot.layout=c(2,3))
-
-#####################################
-
-data <- read.csv("selected_pp_wide.csv")
-
-colSums(is.na(data))
-
-data <- na.exclude(data) 
-
-dim(data)
-
-# Scale variables (method for GLMs)
-data$salinity <- scale(data$salinity)
-data$temperature <- scale(data$temperature)
-data$total.n <- scale(data$total.n)
-data$pH <- scale(data$pH)
-data$total.p <- scale(data$total.p)
-
-#number of rows and columns
-M = nrow(data)
-N = ncol(data)
-
-#Define columns with species abundance data
-SpecColumns = 9:N;
-
-#richness based turnover index  
-SERr = turnover(data[, SpecColumns], method = "SERr") #explicit
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0)
-new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0)
-new_row13 <- c(13, 13, 0)
-new_row14 <- c(14, 14, 0)
-new_row15 <- c(15, 15, 0)
-new_row16 <- c(16, 16, 0)
-new_row17 <- c(17, 17, 0)
-new_row18 <- c(18, 18, 0)
-new_row19 <- c(19, 19, 0)
-SERr <- rbind(SERr, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, 
-              new_row10, new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, 
-              new_row19)
-SERr2 <- acast(SERr, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-#abundance based turnover index 
-SERa = turnover_s(data[, SpecColumns], method = "SERa")
-new_row1 <- c(1, 1, 0)
-new_row2 <- c(2, 2, 0)
-new_row3 <- c(3, 3, 0)
-new_row4 <- c(4, 4, 0)
-new_row5 <- c(5, 5, 0)
-new_row6 <- c(6, 6, 0)
-new_row7 <- c(7, 7, 0)
-new_row8 <- c(8, 8, 0)
-new_row9 <- c(9, 9, 0)
-new_row10 <- c(10, 10, 0)
-new_row11 <- c(11, 11, 0)
-new_row12 <- c(12, 12, 0)
-new_row13 <- c(13, 13, 0)
-new_row14 <- c(14, 14, 0)
-new_row15 <- c(15, 15, 0)
-new_row16 <- c(16, 16, 0)
-new_row17 <- c(17, 17, 0)
-new_row18 <- c(18, 18, 0)
-new_row19 <- c(19, 19, 0)
-SERa <- rbind(SERa, new_row1, new_row2, new_row3, new_row4, new_row5, new_row6, new_row7, new_row8, new_row9, 
-              new_row10, new_row11, new_row12, new_row13, new_row14, new_row15, new_row16, new_row17, new_row18, 
-              new_row19)
-SERa2 <- acast(SERa, To ~ From , value.var="SER", na.rm= TRUE)
-
-
-sp <- SpecColumns
-env <- which(colnames(data) %in% c("temperature","pH","salinity", "total.p","total.n"))
-pred <- names(data[,env])
-d <- data
-
-dcomm <- SERa2
 
 # Dissimilarity matrix
 dcomm <- cbind(year = paste(d$year), as.data.frame(dcomm))  # Adding site column for gdm function
